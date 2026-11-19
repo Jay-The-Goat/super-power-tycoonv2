@@ -5,23 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Super Power Tycoon</title>
   <link rel="stylesheet" href="./style.css">
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://jsdelivr.net"
-      }
-    }
-  </script>
 </head>
 <body oncontextmenu="return false;">
+
+  <canvas id="gameCanvas"></canvas>
 
   <div id="hud">
     <div class="stats-col">
       <div class="cash-box">$<span id="cashDisplay">0</span></div>
       <div class="hp-wrap"><div id="hp-bar"></div></div>
       <div class="controls-hint">
-        PC: WASD Move • Space Jump • Drag Mouse Look • Click/E Power<br>
-        Mobile: Stick Move • Drag Right Side to Look
+        PC: WASD Move • Space Jump • Drag Look • Click/E Power<br>
+        Mobile: Stick Move • Drag Right Side Look
       </div>
     </div>
     <div class="leaderboard">
