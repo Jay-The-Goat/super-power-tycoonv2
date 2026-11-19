@@ -73,7 +73,6 @@ export class Renderer3D {
 
   render() {
     const ctx = this.ctx;
-    // Sky & Horizon
     const grad = ctx.createLinearGradient(0, 0, 0, this.h);
     grad.addColorStop(0, '#5dade2');
     grad.addColorStop(0.55, '#aed6f1');
@@ -84,20 +83,26 @@ export class Renderer3D {
 
     const faces = [];
     const faceDefs = [
-      { idx:, shade: 0.85 }, // Front
-      { idx:, shade: 0.72 }, // Back
-      { idx:, shade: 0.78 }, // Left
-      { idx:, shade: 0.92 }, // Right
-      { idx:, shade: 1.08 }, // Top
-      { idx:, shade: 0.60 }  // Bottom
+      { a: 0, b: 1, c: 2, d: 3, shade: 0.85 },
+      { a: 5, b: 4, c: 7, d: 6, shade: 0.72 },
+      { a: 4, b: 0, c: 3, d: 7, shade: 0.78 },
+      { a: 1, b: 5, c: 6, d: 2, shade: 0.92 },
+      { a: 3, b: 2, c: 6, d: 7, shade: 1.08 },
+      { a: 4, b: 5, c: 1, d: 0, shade: 0.60 }
     ];
 
     for (const box of this.parts) {
       if (!box.visible) continue;
       const hw = box.w * 0.5, hh = box.h * 0.5, hd = box.d * 0.5;
       const localVerts = [
-        [-hw, -hh,  hd], [ hw, -hh,  hd], [ hw,  hh,  hd], [-hw,  hh,  hd],
-        [-hw, -hh, -hd], [ hw, -hh, -hd], [ hw,  hh, -hd], [-hw,  hh, -hd]
+        [-hw, -hh,  hd],
+        [ hw, -hh,  hd],
+        [ hw,  hh,  hd],
+        [-hw,  hh,  hd],
+        [-hw, -hh, -hd],
+        [ hw, -hh, -hd],
+        [ hw,  hh, -hd],
+        [-hw,  hh, -hd]
       ];
 
       const cy = Math.cos(box.ry || 0), sy = Math.sin(box.ry || 0);
@@ -106,32 +111,32 @@ export class Renderer3D {
       const projVerts = [];
       let behind = false;
       for (const [vx, vy, vz] of localVerts) {
-        // Rotate X (limb swing)
         const y1 = vy * cx - vz * sx;
         const z1 = vy * sx + vz * cx;
-        // Rotate Y (character facing)
         const x2 = vx * cy + z1 * sy;
         const z2 = -vx * sy + z1 * cy;
 
         const p = this.project(box.x + x2, box.y + y1, box.z + z2);
-        if (!p) { behind = true; break; }
+        if (!p) {
+          behind = true;
+          break;
+        }
         projVerts.push(p);
       }
       if (behind) continue;
 
       for (const f of faceDefs) {
-        const p0 = projVerts[f.idx[0]];
-        const p1 = projVerts[f.idx[1]];
-        const p2 = projVerts[f.idx[2]];
-        const p3 = projVerts[f.idx[3]];
+        const p0 = projVerts[f.a];
+        const p1 = projVerts[f.b];
+        const p2 = projVerts[f.c];
+        const p3 = projVerts[f.d];
 
-        // Backface culling
         const cross = (p1.sx - p0.sx) * (p2.sy - p0.sy) - (p1.sy - p0.sy) * (p2.sx - p0.sx);
         if (cross >= 0) continue;
 
         const avgDepth = (p0.depth + p1.depth + p2.depth + p3.depth) * 0.25;
         faces.push({
-          pts: [p0, p1, p2, p3],
+          p0, p1, p2, p3,
           depth: avgDepth,
           color: this.shadeColor(box.color, f.shade),
           alpha: box.alpha
@@ -139,17 +144,16 @@ export class Renderer3D {
       }
     }
 
-    // Painter's algorithm sort (far to near)
     faces.sort((a, b) => b.depth - a.depth);
 
     for (const f of faces) {
       ctx.globalAlpha = f.alpha;
       ctx.fillStyle = f.color;
       ctx.beginPath();
-      ctx.moveTo(f.pts[0].sx, f.pts[0].sy);
-      ctx.lineTo(f.pts[1].sx, f.pts[1].sy);
-      ctx.lineTo(f.pts[2].sx, f.pts[2].sy);
-      ctx.lineTo(f.pts[3].sx, f.pts[3].sy);
+      ctx.moveTo(f.p0.sx, f.p0.sy);
+      ctx.lineTo(f.p1.sx, f.p1.sy);
+      ctx.lineTo(f.p2.sx, f.p2.sy);
+      ctx.lineTo(f.p3.sx, f.p3.sy);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,0.12)';
@@ -158,7 +162,6 @@ export class Renderer3D {
     }
     ctx.globalAlpha = 1;
 
-    // Draw floating 3D labels
     const sortedLabels = [];
     for (const lbl of this.labels) {
       if (!lbl.visible) continue;
@@ -202,7 +205,6 @@ export class R6Rig {
   sync() {
     const cy = Math.cos(this.ry), sy = Math.sin(this.ry);
     const placePart = (part, ox, oy, oz, pitch = 0) => {
-      // Pivot offset for swinging arms/legs
       const dy = pitch !== 0 ? -Math.cos(pitch) * 0.9 + 0.9 : 0;
       const dz = pitch !== 0 ? Math.sin(pitch) * 0.9 : 0;
       const lx = ox;
