@@ -303,3 +303,283 @@ function damagePlayer(dmg) {
     player.x = 0;
     player.y = 0;
     player.z = BASE_Z + 25;
+showToast('Knocked Out! Touch pedestals in base to re-equip powers.');
+}
+document.getElementById('hp-bar').style.width = playerHP + '%';
+}
+// 8. UNIVERSAL CONTROLS (PC & MOBILE)
+let touchMoveX = 0;
+let touchMoveZ = 0;
+let velY = 0;
+let isGrounded = true;
+const keys = {};
+const joyZone = document.getElementById('joystick-zone');
+const joyKnob = document.getElementById('joystick-knob');
+const jumpBtn = document.getElementById('jump-btn');
+function doJump() {
+if (isFlying) {
+player.y += 3;
+} else if (isGrounded) {
+velY = 0.45;
+isGrounded = false;
+}
+}
+window.addEventListener('keydown', e => {
+const k = e.key.toLowerCase();
+keys[k] = true;
+if (e.code === 'Space') doJump();
+if (k === 'e') triggerActivePower();
+if (k === '1' || k === '2' || k === '3' || k === '4' || k === '5') {
+const idx = Number(k) - 1;
+if (equippedPowers[idx]) selectPower(equippedPowers[idx].id);
+}
+});
+window.addEventListener('keyup', e => {
+keys[e.key.toLowerCase()] = false;
+});
+let camYaw = 0;
+let camPitch = 0.35;
+let camDist = 17;
+let isMouseDragging = false;
+let mouseMoved = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+canvas.addEventListener('mousedown', e => {
+isMouseDragging = true;
+mouseMoved = false;
+lastMouseX = e.clientX;
+lastMouseY = e.clientY;
+});
+window.addEventListener('mousemove', e => {
+if (!isMouseDragging) return;
+const dx = e.clientX - lastMouseX;
+const dy = e.clientY - lastMouseY;
+if (Math.hypot(dx, dy) > 3) mouseMoved = true;
+camYaw -= dx * 0.007;
+camPitch = Math.max(-0.15, Math.min(1.25, camPitch + dy * 0.007));
+lastMouseX = e.clientX;
+lastMouseY = e.clientY;
+});
+window.addEventListener('mouseup', e => {
+if (isMouseDragging && !mouseMoved && e.button === 0) {
+triggerActivePower();
+}
+isMouseDragging = false;
+});
+window.addEventListener('wheel', e => {
+camDist = Math.max(7, Math.min(34, camDist + e.deltaY * 0.01));
+});
+let joyTouchId = null;
+function handleJoy(t) {
+const rect = joyZone.getBoundingClientRect();
+let dx = t.clientX - (rect.left + rect.width / 2);
+let dy = t.clientY - (rect.top + rect.height / 2);
+const max = 38;
+const dist = Math.hypot(dx, dy);
+if (dist > max) {
+dx = (dx / dist) * max;
+dy = (dy / dist) * max;
+}
+joyKnob.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+touchMoveX = dx / max;
+touchMoveZ = dy / max;
+}
+function resetJoy() {
+joyTouchId = null;
+touchMoveX = 0;
+touchMoveZ = 0;
+joyKnob.style.transform = 'translate(0px, 0px)';
+}
+joyZone.addEventListener('touchstart', e => {
+e.preventDefault();
+const t = e.changedTouches.item(0);
+if (t) {
+joyTouchId = t.identifier;
+handleJoy(t);
+}
+}, { passive: false });
+joyZone.addEventListener('touchmove', e => {
+e.preventDefault();
+for (let i = 0; i < e.changedTouches.length; i++) {
+const t = e.changedTouches.item(i);
+if (t && t.identifier === joyTouchId) {
+handleJoy(t);
+}
+}
+}, { passive: false });
+joyZone.addEventListener('touchend', resetJoy);
+joyZone.addEventListener('touchcancel', resetJoy);
+jumpBtn.addEventListener('touchstart', e => {
+e.preventDefault();
+doJump();
+}, { passive: false });
+jumpBtn.addEventListener('click', doJump);
+let lookTouchId = null;
+let lastTouchX = 0;
+let lastTouchY = 0;
+canvas.addEventListener('touchstart', e => {
+for (let i = 0; i < e.changedTouches.length; i++) {
+const t = e.changedTouches.item(i);
+if (t && lookTouchId === null && t.identifier !== joyTouchId) {
+lookTouchId = t.identifier;
+lastTouchX = t.clientX;
+lastTouchY = t.clientY;
+}
+}
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+for (let i = 0; i < e.changedTouches.length; i++) {
+const t = e.changedTouches.item(i);
+if (t && t.identifier === lookTouchId) {
+camYaw -= (t.clientX - lastTouchX) * 0.008;
+camPitch = Math.max(-0.15, Math.min(1.25, camPitch + (t.clientY - lastTouchY) * 0.008));
+lastTouchX = t.clientX;
+lastTouchY = t.clientY;
+}
+}
+}, { passive: true });
+canvas.addEventListener('touchend', e => {
+for (let i = 0; i < e.changedTouches.length; i++) {
+const t = e.changedTouches.item(i);
+if (t && t.identifier === lookTouchId) {
+lookTouchId = null;
+}
+}
+});
+// 9. MAIN GAME LOOP
+let walkCycle = 0;
+function animate() {
+requestAnimationFrame(animate);
+let inputX = touchMoveX;
+let inputZ = touchMoveZ;
+if (keys.w || keys.arrowup) inputZ -= 1;
+if (keys.s || keys.arrowdown) inputZ += 1;
+if (keys.a || keys.arrowleft) inputX -= 1;
+if (keys.d || keys.arrowright) inputX += 1;
+const mag = Math.hypot(inputX, inputZ);
+if (mag > 0.05) {
+const normX = inputX / Math.max(1, mag);
+const normZ = inputZ / Math.max(1, mag);
+const moveAngle = Math.atan2(-normX, -normZ) + camYaw;
+player.x -= Math.sin(moveAngle) * walkSpeed;
+player.z -= Math.cos(moveAngle) * walkSpeed;
+player.ry = moveAngle;
+walkCycle += walkSpeed * 0.9;
+player.swing = Math.sin(walkCycle) * 0.85;
+} else {
+player.swing *= 0.8;
+}
+let groundHeight = 0;
+if (hasFloor2) {
+const inBaseX = Math.abs(player.x) < 16.5;
+const inBaseZ = player.z > BASE_Z - 20.5 && player.z < BASE_Z + 20.5;
+if (Math.abs(player.x) < 3.2 && player.z >= BASE_Z - 12 && player.z <= BASE_Z + 4) {
+const progress = (BASE_Z + 4 - player.z) / 16;
+groundHeight = Math.max(0, Math.min(10.8, progress * 10.8));
+} else if (inBaseX && inBaseZ && player.y >= 9.5) {
+groundHeight = 10.8;
+}
+}
+if (isFlying) {
+velY = 0;
+if (player.y < groundHeight + 6) {
+player.y += 0.2;
+}
+} else {
+player.y += velY;
+if (player.y > groundHeight) {
+velY -= 0.022;
+} else {
+player.y = groundHeight;
+velY = 0;
+isGrounded = true;
+}
+}
+player.sync();
+if (floor1Vault > 0 && player.y < 3 && Math.hypot(player.x - -11, player.z - (BASE_Z + 12)) < 3.2) {
+updateCash(floor1Vault);
+floor1Vault = 0;
+updateVaultLabels();
+}
+if (hasFloor2 && floor2Vault > 0 && player.y > 9 && Math.hypot(player.x - -11, player.z - (BASE_Z + 12)) < 3.2) {
+updateCash(floor2Vault);
+floor2Vault = 0;
+updateVaultLabels();
+}
+for (const ped of pedestals) {
+ped.orb.ry += 0.03;
+if (Math.abs(player.y - ped.y) < 3 && Math.hypot(player.x - ped.x, player.z - ped.z) < 2.4) {
+givePowerToPlayer(ped.id, ped.name, ped.color);
+}
+}
+for (const b of buttons) {
+if (b.bought) continue;
+if (b.floorReq === 2 && !hasFloor2) continue;
+if (Math.abs(player.y - b.y) < 3 && Math.hypot(player.x - b.x, player.z - b.z) < 2.3) {
+if (cash >= b.cost) {
+updateCash(-b.cost);
+b.bought = true;
+engine.removeBox(b.pad);
+engine.removeLabel(b.sprite);
+b.onBuy();
+updateVaultLabels();
+} else {
+showToast('Need $' + b.cost + '!');
+}
+}
+}
+if (!pointCaptured && Math.hypot(player.x, player.z) < 7.5) {
+captureProgress += 0.5;
+if (captureProgress >= 100) {
+pointCaptured = true;
+capturePad.color = '#34c759';
+showToast('City Point Captured! +25% Cash Boost Active!');
+updateVaultLabels();
+}
+}
+for (let i = projectiles.length - 1; i >= 0; i--) {
+const p = projectiles[i];
+p.mesh.x += p.dx * p.speed;
+p.mesh.z += p.dz * p.speed;
+p.life--;
+for (const en of enemies) {
+if (Math.hypot(p.mesh.x - en.rig.x, p.mesh.z - en.rig.z) < 2.6) {
+damageEnemy(en, p.dmg);
+p.life = 0;
+}
+}
+if (p.life <= 0) {
+engine.removeBox(p.mesh);
+projectiles.splice(i, 1);
+}
+}
+for (const en of enemies) {
+const distToPlayer = Math.hypot(player.x - en.rig.x, player.z - en.rig.z);
+const playerInsideBase = Math.abs(player.x) < 16 && player.z < BASE_Z + 20;
+if (distToPlayer < 35 && !playerInsideBase) {
+const ang = Math.atan2(-(player.x - en.rig.x), -(player.z - en.rig.z));
+en.rig.x -= Math.sin(ang) * 0.14;
+en.rig.z -= Math.cos(ang) * 0.14;
+en.rig.ry = ang;
+en.walk += 0.18;
+en.rig.swing = Math.sin(en.walk) * 0.8;
+if (distToPlayer < 2.5 && en.cooldown <= 0) {
+damagePlayer(15);
+en.cooldown = 45;
+}
+} else {
+en.rig.swing *= 0.8;
+}
+en.rig.sync();
+if (en.cooldown > 0) en.cooldown--;
+}
+const targetY = player.y + 3.2;
+const horizDist = camDist * Math.cos(camPitch);
+engine.cam.x = player.x + Math.sin(camYaw) * horizDist;
+engine.cam.z = player.z + Math.cos(camYaw) * horizDist;
+engine.cam.y = Math.max(1.2, targetY + Math.sin(camPitch) * camDist);
+engine.cam.yaw = camYaw;
+engine.cam.pitch = camPitch;
+engine.render();
+}
+animate();
