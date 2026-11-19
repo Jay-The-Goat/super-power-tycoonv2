@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Super Power Tycoon</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; margin: 0; padding: 0; }
+    body { overflow: hidden; background: #7ec0ee; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    
+    /* Top HUD: Cash, Health Bar & Leaderboard */
+    #hud {
+      position: fixed; top: 12px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      pointer-events: none; z-index: 10;
+    }
+    .stats-col { display: flex; flex-direction: column; gap: 6px; }
+    .cash-box {
+      background: rgba(15, 15, 20, 0.88); color: #34c759;
+      padding: 8px 14px; border-radius: 10px; font-size: 19px; font-weight: 800;
+      border: 2px solid rgba(255,255,255,0.2);
+    }
+    .hp-wrap {
+      width: 150px; height: 14px; background: rgba(0,0,0,0.75);
+      border-radius: 7px; overflow: hidden; border: 1px solid rgba(255,255,255,0.3);
+    }
+    #hp-bar { width: 100%; height: 100%; background: #34c759; transition: width 0.2s; }
+    .leaderboard {
+      background: rgba(15, 15, 20, 0.84); color: #fff;
+      padding: 8px 12px; border-radius: 8px; font-size: 12px; min-width: 145px;
+    }
+    .leaderboard div { display: flex; justify-content: space-between; margin-top: 3px; color: #ddd; }
+
+    /* Center Toast Banner */
+    #toast {
+      position: fixed; top: 82px; left: 50%; transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.85); color: #ffd60a; padding: 7px 16px;
+      border-radius: 20px; font-weight: 700; font-size: 13px;
+      opacity: 0; transition: opacity 0.25s; pointer-events: none; z-index: 15;
+    }
+
+    /* Roblox Backpack Hotbar */
+    #hotbar {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 6px; z-index: 25; max-width: 52vw; overflow-x: auto;
+    }
+    .slot {
+      min-width: 58px; height: 58px; background: rgba(20, 20, 25, 0.88);
+      border: 2px solid rgba(255,255,255,0.3); border-radius: 10px;
+      color: #fff; font-size: 10px; font-weight: 700; text-align: center;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      padding: 4px; touch-action: manipulation;
+    }
+    .slot.active { border-color: #00d2ff; background: rgba(0, 140, 255, 0.5); }
+    .slot span { font-size: 9px; color: #aaa; margin-bottom: 2px; }
+
+    /* Mobile Touch Controls */
+    #joystick-zone {
+      position: fixed; bottom: 22px; left: 18px; width: 108px; height: 108px;
+      background: rgba(255, 255, 255, 0.18); border: 2px solid rgba(255, 255, 255, 0.35);
+      border-radius: 50%; z-index: 20; touch-action: none;
+    }
+    #joystick-knob {
+      position: absolute; top: 29px; left: 29px; width: 50px; height: 50px;
+      background: rgba(255, 255, 255, 0.78); border-radius: 50%; pointer-events: none;
+    }
+    #action-buttons {
+      position: fixed; bottom: 22px; right: 18px; display: flex; flex-direction: column; gap: 10px; z-index: 20;
+    }
+    .round-btn {
+      width: 70px; height: 70px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.25); border: 2px solid rgba(255, 255, 255, 0.5);
+      color: white; font-weight: 800; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; touch-action: none;
+    }
+    #power-btn { background: rgba(0, 150, 255, 0.55); border-color: #00d2ff; display: none; }
+    .round-btn:active { transform: scale(0.92); }
+  </style>
+</head>
+<body>
+
+  <div id="hud">
+    <div class="stats-col">
+      <div class="cash-box">$<span id="cashDisplay">0</span></div>
+      <div class="hp-wrap"><div id="hp-bar"></div></div>
+    </div>
+    <div class="leaderboard">
+      <strong>Super Power Tycoon</strong>
+      <div><span>Cash</span><span id="lbCash">$0</span></div>
+      <div><span>KOs</span><span id="lbKOs">0</span></div>
+      <div><span>Boost</span><span id="lbBoost">1.0x</span></div>
+    </div>
+  </div>
+
+  <div id="toast">Message</div>
+  <div id="hotbar"></div>
+
+  <div id="joystick-zone"><div id="joystick-knob"></div></div>
+  <div id="action-buttons">
+    <div id="power-btn" class="round-btn">USE</div>
+    <div id="jump-btn" class="round-btn">JUMP</div>
+  </div>
+
+  <script src="https://cloudflare.com"></script>
+  <script>
+    // --- 1. SCENE & LIGHTING ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x7ec0ee);
+    scene.fog = new THREE.Fog(0x7ec0ee, 55, 200);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 250);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.85));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    dirLight.position.set(35, 60, 35);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    function createPart(w, h, d, color, x, y, z, emissive = 0x000000, opacity = 1) {
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const mat = new THREE.MeshStandardMaterial({
+        color, emissive, roughness: 0.55,
+        transparent: opacity < 1, opacity
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = opacity === 1;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    }
+
+    function makeLabel(text, x, y, z, scaleW = 7.5) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512; canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      ctx.fillRect(0, 0, 512, 128);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 256, 78);
+      const tex = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(scaleW, 1.8, 1);
+      scene.add(sprite);
+      return sprite;
+    }
+
+    // --- 2. SUPER CITY MAP & CENTRAL CAPTURE POINT ---
+    createPart(280, 2, 280, 0x4b974b, 0, -1, 0); // Classic green map
+    createPart(20, 0.3, 180, 0x333333, 0, 0.15, 0); // Center road
+    createPart(180, 0.3, 20, 0x333333, 0, 0.15, 0); // Cross road
+
+    // Central City Capture Point (Gives +25% Cash Boost when captured)
+    const capturePad = createPart(14, 0.5, 14, 0x8e8e93, 0, 0.35, 0, 0x222222);
+    const captureLabel = makeLabel('City Capture Point (+25% Cash)', 0, 3.2, 0, 9);
+    let captureProgress = 0;
+    let pointCaptured = false;
+
+    // --- 3. YOUR TYCOON PLOT (Located along the City Road at Z = -42) ---
+    const BASE_Z = -42;
+    createPart(34, 0.4, 42, 0x7f8c8d, 0, 0.2, BASE_Z); // 1st Floor Foundation
+    createPart(12, 0.45, 10, 0x2c3e50, 0, 0.22, BASE_Z + 24); // Spawn & Entrance
+
+    // --- 4. R6 BLOCKY CHARACTER ---
+    const player = new THREE.Group();
+    player.position.set(0, 0, BASE_Z + 25);
+    scene.add(player);
+
+    function makeLimb(w, h, d, color, x, y, z, parentGroup = player) {
+      const geo = new THREE.BoxGeometry(w, h, d);
+      geo.translate(0, -h / 2, 0);
+      const mat = new THREE.MeshStandardMaterial({ color });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      parentGroup.add(mesh);
+      return mesh;
+    }
+
+    const torso = createPart(2, 2, 1, 0x0d69ac, 0, 3, 0); player.add(torso);
+    const head = createPart(1.2, 1.2, 1.2, 0xf5cd30, 0, 4.6, 0); player.add(head);
+    const leftArm = makeLimb(1, 2, 1, 0xf5cd30, -1.5, 4, 0);
+    const rightArm = makeLimb(1, 2, 1, 0xf5cd30, 1.5, 4, 0);
+    const leftLeg = makeLimb(1, 2, 1, 0xa4bd47, -0.5, 2, 0);
+    const rightLeg = makeLimb(1, 2, 1, 0xa4bd47, 0.5, 2, 0);
+
+    // --- 5. DIRECT-FLOW CASH COLLECTORS (NO CONVEYOR BELTS!) ---
+    let cash = 0;
+    let floor1Vault = 0;
+    let floor2Vault = 0;
+    let floor1Income = 0; // Cash generated every 1.5s
+    let floor2Income = 0;
+    let upgraderMult = 1.0;
+
+    // Floor 1 Cash Pad (Green glowing pad on the left)
+    createPart(5, 0.6, 5, 0x2ecc71, -11, 0.5, BASE_Z + 12, 0x004411);
+    const vault1Label = makeLabel('Collect: $0', -11, 2.5, BASE_Z + 12, 6);
+
+    // Floor 2 Ultimate Cash Pad (Separate collector upstairs, spawned when Floor 2 is bought)
+    let vault2Label = null;
+    let hasFloor2 = false;
+
+    function updateCash(amount) {
+      cash = Math.floor(cash + amount);
+      document.getElementById('cashDisplay').textContent = cash;
+      document.getElementById('lbCash').textContent = '$' + cash;
+    }
+
+    function updateVaultLabels() {
+      const totalBoost = upgraderMult * (pointCaptured ? 1.25 : 1.0);
+      document.getElementById('lbBoost').textContent = totalBoost.toFixed(2) + 'x';
+      
+      scene.remove(vault1Label);
+      Object.assign(vault1Label, makeLabel(`Collect: $${Math.floor(floor1Vault)}`, -11, 2.5, BASE_Z + 12, 6));
+
+      if (hasFloor2 && vault2Label) {
+        scene.remove(vault2Label);
+        Object.assign(vault2Label, makeLabel(`2F Collect: $${Math.floor(floor2Vault)}`, -11, 13.5, BASE_Z + 12, 6.5));
+      }
+    }
+
+    // Automatic Direct-Flow Extractor Tick (Every 1.5s, just like Super Power Tycoon)
+    setInterval(() => {
+      const totalBoost = upgraderMult * (pointCaptured ? 1.25 : 1.0);
+      if (floor1Income > 0) floor1Vault += floor1Income * totalBoost;
+      if (hasFloor2 && floor2Income > 0) floor2Vault += floor2Income * totalBoost;
+      if (floor1Income > 0 || floor2Income > 0) updateVaultLabels();
+    }, 1500);
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+t.style.opacity = 1;
+clearTimeout(t.timer);
+t.timer = setTimeout(() => t.style.opacity = 0, 1800);
+}
+// --- 6. SUPER POWERS & PEDESTALS (Lose on Death, Re-Equip at Base!) ---
+let equippedPowers = []; // Hotbar items currently held
+let activeSlot = null;
+let isFlying = false;
+let walkSpeed = 0.26;
+let playerHP = 100;
+let kos = 0;
+const pedestals = []; // Unlocked power givers sitting in your base
+const hotbar = document.getElementById('hotbar');
+const powerBtn = document.getElementById('power-btn');
+function createPedestal(id, name, color, x, y, z) {
+createPart(2.4, 1.2, 2.4, 0x222222, x, y + 0.6, z);
+const orb = createPart(1.3, 1.3, 1.3, color, x, y + 2.2, z, color);
+makeLabel(name, x, y + 3.6, z, 5.5);
+pedestals.push({ id, name, color, x, y, z, orb });
+givePowerToPlayer(id, name, color);
+}
+function givePowerToPlayer(id, name, color) {
+if (equippedPowers.find(p => p.id === id)) return;
+equippedPowers.push({ id, name, color });
+renderHotbar();
+selectPower(id);
+}
+function renderHotbar() {
+hotbar.innerHTML = equippedPowers.map((p, idx) => <div class="slot ${activeSlot === p.id ? 'active' : ''}" onclick="selectPower('${p.id}')"> <span>[${idx + 1}]</span> <div style="color:#fff">${p.name}</div> </div>).join('');
+}
+window.selectPower = function(id) {
+activeSlot = id;
+renderHotbar();
+powerBtn.style.display = 'flex';
+if (id === 'speed') {
+walkSpeed = 0.55;
+isFlying = false;
+powerBtn.textContent = 'DASH';
+} else if (id === 'flight') {
+walkSpeed = 0.36;
+powerBtn.textContent = isFlying ? 'LAND' : 'FLY';
+} else if (id === 'laser') {
+walkSpeed = 0.26;
+isFlying = false;
+powerBtn.textContent = 'LASER';
+} else if (id === 'smash') {
+walkSpeed = 0.26;
+isFlying = false;
+powerBtn.textContent = 'SMASH';
+} else {
+walkSpeed = 0.26;
+isFlying = false;
+powerBtn.textContent = 'BLAST';
+}
+};
+// Projectiles & Shockwaves
+const projectiles = [];
+function shootProjectile(color, speed, size, dmg) {
+const orb = createPart(size, size, size, color, player.position.x, player.position.y + 3.2, player.position.z, color);
+const dir = new THREE.Vector3(Math.sin(player.rotation.y), 0, Math.cos(player.rotation.y)).normalize();
+orb.position.addScaledVector(dir, 2);
+projectiles.push({ mesh: orb, dir, speed, dmg, life: 75 });
+rightArm.rotation.x = -Math.PI / 2;
+}
+powerBtn.addEventListener('touchstart', e => {
+e.preventDefault();
+if (!activeSlot) return;
+if (activeSlot === 'blast') {
+shootProjectile(0x00e5ff, 0.9, 1.2, 40);
+} else if (activeSlot === 'laser') {
+shootProjectile(0xff2d55, 1.6, 0.7, 65);
+} else if (activeSlot === 'speed') {
+const dir = new THREE.Vector3(Math.sin(player.rotation.y), 0, Math.cos(player.rotation.y));
+player.position.addScaledVector(dir, 7);
+} else if (activeSlot === 'flight') {
+isFlying = !isFlying;
+powerBtn.textContent = isFlying ? 'LAND' : 'FLY';
+} else if (activeSlot === 'smash') {
+// Ground Smash AOE
+const ring = createPart(14, 0.4, 14, 0xff9500, player.position.x, player.position.y + 0.3, player.position.z, 0xff5500, 0.6);
+setTimeout(() => scene.remove(ring), 300);
+for (let en of enemies) {
+if (Math.hypot(en.group.position.x - player.position.x, en.group.position.z - player.position.z) < 9) {
+damageEnemy(en, 100);
+}
+}
+}
+});
+// --- 7. TYCOON BUTTONS (Matching Rainbow Moon Studios Progression) ---
+const buttons = [];
+function addButton(label, cost, x, y, z, color, floorReq, onBuy) {
+const pad = createPart(3.4, 0.4, 3.4, color, x, y + 0.4, z, color);
+const sprite = makeLabel(cost === 0 ? ${label} (FREE) : ${label} ($${cost}), x, y + 2.2, z, 6.8);
+buttons.push({ pad, sprite, cost, x, y, z, floorReq, bought: false, onBuy });
+}
+// FIRST FLOOR: Extractors & Upgraders (Left Side)
+addButton('Claim Extractor 1', 0, -11, 0, BASE_Z + 4, 0x34c759, 1, () => {
+floor1Income += 25;
+createPart(3, 5, 3, 0x34495e, -13, 2.7, BASE_Z + 4);
+createPart(1.5, 1.5, 1.5, 0x34c759, -13, 5.8, BASE_Z + 4, 0x006622);
+showToast('Extractor 1 Started (+$25/tick)!');
+});
+addButton('Extractor 2', 200, -11, 0, BASE_Z - 3, 0x34c759, 1, () => {
+floor1Income += 25;
+createPart(3, 5, 3, 0x34495e, -13, 2.7, BASE_Z - 3);
+createPart(1.5, 1.5, 1.5, 0x34c759, -13, 5.8, BASE_Z - 3, 0x006622);
+showToast('Extractor 2 Built (+$25/tick)!');
+});
+addButton('Power Upgrader (+25%)', 600, -11, 0, BASE_Z - 10, 0xaf52de, 1, () => {
+upgraderMult += 0.25;
+createPart(4, 6, 4, 0x5e5ce6, -13, 3.2, BASE_Z - 10, 0x220066);
+showToast('Output Boosted +25%!');
+});
+addButton('Hyper Extractor', 1500, -11, 0, BASE_Z - 16, 0xff9500, 1, () => {
+floor1Income += 125;
+createPart(4, 7, 4, 0xff9500, -13, 3.7, BASE_Z - 16, 0x663300);
+showToast('Hyper Extractor Built (+$125/tick)!');
+});
+// FIRST FLOOR: Walls, Owner-Only Laser Door & Powers (Right Side)
+addButton('Base Walls & Laser Door', 300, 4, 0, BASE_Z + 16, 0x00d2ff, 1, () => {
+// Back & Side Walls
+createPart(34, 10, 1, 0x95a5a6, 0, 5.2, BASE_Z - 20.5);
+createPart(1, 10, 42, 0x95a5a6, -16.5, 5.2, BASE_Z);
+createPart(1, 10, 42, 0x95a5a6, 16.5, 5.2, BASE_Z);
+// Front Wall with Owner-Only Laser Doorway
+createPart(12, 10, 1, 0x95a5a6, -11, 5.2, BASE_Z + 20.5);
+createPart(12, 10, 1, 0x95a5a6, 11, 5.2, BASE_Z + 20.5);
+createPart(10, 9, 0.4, 0x00e5ff, 0, 4.7, BASE_Z + 20.5, 0x0066aa, 0.35);
+showToast('Owner-Only Laser Door Built!');
+});
+addButton('Power: Magic Blast', 150, 9, 0, BASE_Z + 8, 0x00e5ff, 1, () => {
+createPedestal('blast', 'Magic Blast', 0x00e5ff, 13, 0, BASE_Z + 8);
+showToast('Unlocked Magic Blast!');
+});
+addButton('Power: Super Speed', 500, 9, 0, BASE_Z + 1, 0xffcc00, 1, () => {
+createPedestal('speed', 'Super Speed', 0xffcc00, 13, 0, BASE_Z + 1);
+showToast('Unlocked Super Speed!');
+});
+addButton('Power: Ground Smash', 1200, 9, 0, BASE_Z - 6, 0xff9500, 1, () => {
+createPedestal('smash', 'Ground Smash', 0xff9500, 13, 0, BASE_Z - 6);
+showToast('Unlocked Ground Smash!');
+});
+// SECOND FLOOR UNLOCK ($5,000 - Exact price from Super Power Tycoon!)
+addButton('Buy 2nd Floor', 5000, 0, 0, BASE_Z - 14, 0xff2d55, 1, () => {
+hasFloor2 = true;
+// 2nd Floor Deck & Walls
+createPart(34, 0.6, 42, 0x7f8c8d, 0, 10.5, BASE_Z);
+createPart(34, 10, 1, 0x95a5a6, 0, 15.5, BASE_Z - 20.5);
+createPart(1, 10, 42, 0x95a5a6, -16.5, 15.5, BASE_Z);
+createPart(1, 10, 42, 0x95a5a6, 16.5, 15.5, BASE_Z);
+// Walkable Ramp/Stairs up to 2nd Floor
+const rampGeo = new THREE.BoxGeometry(6, 0.6, 18);
+const rampMat = new THREE.MeshStandardMaterial({ color: 0x34495e });
+const ramp = new THREE.Mesh(rampGeo, rampMat);
+ramp.position.set(0, 5.4, BASE_Z - 4);
+ramp.rotation.x = Math.atan2(10.5, 15);
+scene.add(ramp);
+// 2nd Floor Ultimate Cash Collector
+createPart(5, 0.6, 5, 0xffcc00, -11, 11, BASE_Z + 12, 0x664400);
+vault2Label = makeLabel('2F Collect: $0', -11, 13.5, BASE_Z + 12, 6.5);
+showToast('2nd Floor Unlocked!');
+});
+// SECOND FLOOR UPGRADES & LEGENDARY POWERS
+addButton('Super Dropper', 8000, -11, 10.8, BASE_Z + 2, 0xffcc00, 2, () => {
+floor2Income += 600;
+createPart(4.5, 7, 4.5, 0xffcc00, -13, 14.3, BASE_Z + 2, 0x664400);
+showToast('Super Dropper Built (+$600/tick)!');
+});
+addButton('Power: Hero Flight', 10000, 9, 10.8, BASE_Z + 6, 0x34c759, 2, () => {
+createPedestal('flight', 'Hero Flight', 0x34c759, 13, 10.8, BASE_Z + 6);
+showToast('Unlocked Hero Flight!');
+});
+addButton('Power: Laser Vision', 15000, 9, 10.8, BASE_Z - 3, 0xff2d55, 2, () => {
+createPedestal('laser', 'Laser Vision', 0xff2d55, 13, 10.8, BASE_Z - 3);
+showToast('Unlocked Laser Vision!');
+});
+// --- 8. SUPER VILLAIN NPCs IN THE CITY ---
+const enemies = [];
+function spawnVillain(x, z) {
+const g = new THREE.Group();
+g.position.set(x, 0, z);
+g.add(createPart(2, 2, 1, 0x8e44ad, 0, 3, 0));
+g.add(createPart(1.2, 1.2, 1.2, 0x222222, 0, 4.6, 0));
+makeLimb(1, 2, 1, 0x222222, -1.5, 4, 0, g);
+makeLimb(1, 2, 1, 0x222222, 1.5, 4, 0, g);
+makeLimb(1, 2, 1, 0x111111, -0.5, 2, 0, g);
+makeLimb(1, 2, 1, 0x111111, 0.5, 2, 0, g);
+scene.add(g);
+enemies.push({ group: g, hp: 100, cooldown: 0 });
+}
+spawnVillain(-18, 12);
+spawnVillain(18, 12);
+spawnVillain(0, 28);
+spawnVillain(28, -10);
+function damageEnemy(en, dmg) {
+en.hp -= dmg;
+if (en.hp <= 0) {
+kos++;
+document.getElementById('lbKOs').textContent = kos;
+updateCash(150);
+showToast('Villain Smashed! +$150');
+en.hp = 100;
+en.group.position.set((Math.random() - 0.5) * 70, 0, 10 + Math.random() * 35);
+}
+}
+function damagePlayer(dmg) {
+playerHP -= dmg;
+if (playerHP <= 0) {
+// Exact Rainbow Moon Studios rule: Lose powers on death, respawn at base to re-equip!
+playerHP = 100;
+equippedPowers = [];
+activeSlot = null;
+isFlying = false;
+walkSpeed = 0.26;
+renderHotbar();
+powerBtn.style.display = 'none';
+player.position.set(0, 0, BASE_Z + 25);
+showToast('Knocked Out! Touch pedestals in base to re-equip powers.');
+}
+document.getElementById('hp-bar').style.width = playerHP + '%';
+}
+// --- 9. TOUCH CONTROLS ---
+let moveX = 0, moveZ = 0, velY = 0, isGrounded = true;
+const joyZone = document.getElementById('joystick-zone');
+const joyKnob = document.getElementById('joystick-knob');
+let joyTouchId = null;
+joyZone.addEventListener('touchstart', e => {
+e.preventDefault();
+joyTouchId = e.changedTouches.identifier;
+handleJoy(e.changedTouches);
+});
+joyZone.addEventListener('touchmove', e => {
+e.preventDefault();
+for (let t of e.changedTouches) if (t.identifier === joyTouchId) handleJoy(t);
+});
+function resetJoy() {
+joyTouchId = null; moveX = 0; moveZ = 0;
+joyKnob.style.transform = translate(0px, 0px);
+}
+joyZone.addEventListener('touchend', resetJoy);
+joyZone.addEventListener('touchcancel', resetJoy);
+function handleJoy(t) {
+const rect = joyZone.getBoundingClientRect();
+let dx = t.clientX - (rect.left + rect.width / 2);
+let dy = t.clientY - (rect.top + rect.height / 2);
+const max = 38, dist = Math.hypot(dx, dy);
+if (dist > max) { dx = (dx / dist) * max; dy = (dy / dist) * max; }
+joyKnob.style.transform = translate(${dx}px, ${dy}px);
+moveX = dx / max; moveZ = dy / max;
+}
+document.getElementById('jump-btn').addEventListener('touchstart', e => {
+e.preventDefault();
+if (isFlying) {
+player.position.y += 3;
+} else if (isGrounded) {
+velY = 0.44;
+isGrounded = false;
+}
+});
+let camAngle = 0, lastCamX = null;
+window.addEventListener('touchstart', e => {
+for (let t of e.changedTouches) if (t.clientX > window.innerWidth * 0.45 && t.clientY < window.innerHeight * 0.7) lastCamX = t.clientX;
+});
+window.addEventListener('touchmove', e => {
+for (let t of e.changedTouches) {
+if (lastCamX !== null && t.clientX > window.innerWidth * 0.45) {
+camAngle -= (t.clientX - lastCamX) * 0.008;
+lastCamX = t.clientX;
+}
+}
+});
+window.addEventListener('touchend', () => lastCamX = null);
+// --- 10. MAIN GAME LOOP ---
+let walkCycle = 0;
+function animate() {
+requestAnimationFrame(animate);
+const moving = Math.hypot(moveX, moveZ) > 0.05;
+if (moving) {
+const angle = Math.atan2(moveX, moveZ) + camAngle;
+player.position.x += Math.sin(angle) * walkSpeed;
+player.position.z += Math.cos(angle) * walkSpeed;
+player.rotation.y = angle;
+walkCycle += walkSpeed * 0.9;
+const swing = Math.sin(walkCycle) * 0.9;
+leftLeg.rotation.x = swing;
+rightLeg.rotation.x = -swing;
+leftArm.rotation.x = -swing;
+rightArm.rotation.x = swing;
+} else {
+leftLeg.rotation.x *= 0.8;
+rightLeg.rotation.x *= 0.8;
+leftArm.rotation.x *= 0.8;
+rightArm.rotation.x *= 0.8;
+}
+// Floor Height Calculation (Ground vs 2nd Floor Ramp & Deck)
+let groundHeight = 0;
+if (hasFloor2) {
+const inBaseX = Math.abs(player.position.x) < 16.5;
+const inBaseZ = player.position.z > BASE_Z - 20.5 && player.position.z < BASE_Z + 20.5;
+// On stairs ramp
+if (Math.abs(player.position.x) < 3.2 && player.position.z >= BASE_Z - 12 && player.position.z <= BASE_Z + 4) {
+const progress = (BASE_Z + 4 - player.position.z) / 16;
+groundHeight = Math.max(0, Math.min(10.8, progress * 10.8));
+} else if (inBaseX && inBaseZ && player.position.y >= 9.5) {
+groundHeight = 10.8;
+}
+}
+if (isFlying) {
+velY = 0;
+if (player.position.y < groundHeight + 6) player.position.y += 0.2;
+} else {
+player.position.y += velY;
+if (player.position.y > groundHeight) {
+velY -= 0.022;
+} else {
+player.position.y = groundHeight;
+velY = 0;
+isGrounded = true;
+}
+}
+// Direct-Flow Cash Pad Collection (1st Floor & 2nd Floor)
+if (floor1Vault > 0 && player.position.y < 3 && Math.hypot(player.position.x - (-11), player.position.z - (BASE_Z + 12)) < 3.2) {
+updateCash(floor1Vault);
+floor1Vault = 0;
+updateVaultLabels();
+}
+if (hasFloor2 && floor2Vault > 0 && player.position.y > 9 && Math.hypot(player.position.x - (-11), player.position.z - (BASE_Z + 12)) < 3.2) {
+updateCash(floor2Vault);
+floor2Vault = 0;
+updateVaultLabels();
+}
+// Re-Equip Powers by Touching Unlocked Pedestals
+for (let ped of pedestals) {
+ped.orb.rotation.y += 0.03;
+if (Math.abs(player.position.y - ped.y) < 3 && Math.hypot(player.position.x - ped.x, player.position.z - ped.z) < 2.4) {
+givePowerToPlayer(ped.id, ped.name, ped.color);
+}
+}
+// Tycoon Button Step-On Check
+for (let b of buttons) {
+if (b.bought) continue;
+if (b.floorReq === 2 && !hasFloor2) continue;
+if (Math.abs(player.position.y - b.y) < 3 && Math.hypot(player.position.x - b.x, player.position.z - b.z) < 2.3) {
+if (cash >= b.cost) {
+updateCash(-b.cost);
+b.bought = true;
+scene.remove(b.pad);
+scene.remove(b.sprite);
+b.onBuy();
+updateVaultLabels();
+} else {
+showToast(Need $${b.cost}!);
+}
+}
+}
+// Central City Capture Point Check
+if (!pointCaptured && Math.hypot(player.position.x, player.position.z) < 7.5) {
+captureProgress += 0.5;
+if (captureProgress >= 100) {
+pointCaptured = true;
+capturePad.material.color.setHex(0x34c759);
+capturePad.material.emissive.setHex(0x005511);
+showToast('City Point Captured! +25% Cash Boost Active!');
+updateVaultLabels();
+}
+}
+// Projectiles vs Villains
+for (let i = projectiles.length - 1; i >= 0; i--) {
+const p = projectiles[i];
+p.mesh.position.addScaledVector(p.dir, p.speed);
+p.life--;
+for (let en of enemies) {
+if (Math.hypot(p.mesh.position.x - en.group.position.x, p.mesh.position.z - en.group.position.z) < 2.6) {
+damageEnemy(en, p.dmg);
+p.life = 0;
+}
+}
+if (p.life <= 0) {
+scene.remove(p.mesh);
+projectiles.splice(i, 1);
+}
+}
+// Super Villain AI (Chases & attacks player in the city, blocked by base walls)
+for (let en of enemies) {
+const distToPlayer = Math.hypot(player.position.x - en.group.position.x, player.position.z - en.group.position.z);
+const playerInsideBase = Math.abs(player.position.x) < 16 && player.position.z < BASE_Z + 20;
+if (distToPlayer < 35 && !playerInsideBase) {
+const ang = Math.atan2(player.position.x - en.group.position.x, player.position.z - en.group.position.z);
+en.group.position.x += Math.sin(ang) * 0.14;
+en.group.position.z += Math.cos(ang) * 0.14;
+en.group.rotation.y = ang;
+if (distToPlayer < 2.5 && en.cooldown <= 0) {
+damagePlayer(15);
+en.cooldown = 45;
+}
+}
+if (en.cooldown > 0) en.cooldown--;
+}
+// Third-Person Follow Camera
+camera.position.x = player.position.x + Math.sin(camAngle) * 16;
+camera.position.z = player.position.z + Math.cos(camAngle) * 16;
+camera.position.y = player.position.y + 9;
+camera.lookAt(player.position.x, player.position.y + 3, player.position.z);
+renderer.render(scene, camera);
+}
+window.addEventListener('resize', () => {
+camera.aspect = window.innerWidth / window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth, window.innerHeight);
+});
+animate();
