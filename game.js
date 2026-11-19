@@ -4,8 +4,8 @@ const canvas = document.getElementById('gameCanvas');
 const engine = new Renderer3D(canvas);
 
 // --- 1. SUPER CITY MAP & CENTRAL CAPTURE POINT ---
-engine.addBox(22, 0.2, 180, '#3a3a3c', 0, 0.1, 0); // North-South City Road
-engine.addBox(180, 0.2, 22, '#3a3a3c', 0, 0.1, 0); // East-West City Road
+engine.addBox(22, 0.2, 180, '#3a3a3c', 0, 0.1, 0);
+engine.addBox(180, 0.2, 22, '#3a3a3c', 0, 0.1, 0);
 
 const capturePad = engine.addBox(14, 0.4, 14, '#8e8e93', 0, 0.25, 0);
 engine.addLabel('City Capture Point (+25% Cash)', 0, 3.2, 0);
@@ -14,12 +14,12 @@ let pointCaptured = false;
 
 // --- 2. YOUR TYCOON BASE (Z = -42) ---
 const BASE_Z = -42;
-engine.addBox(34, 0.4, 42, '#7f8c8d', 0, 0.2, BASE_Z); // 1st Floor Pad
-engine.addBox(12, 0.45, 10, '#2c3e50', 0, 0.22, BASE_Z + 24); // Spawn Walkway
+engine.addBox(34, 0.4, 42, '#7f8c8d', 0, 0.2, BASE_Z);
+engine.addBox(12, 0.45, 10, '#2c3e50', 0, 0.22, BASE_Z + 24);
 
 // --- 3. R6 CHARACTER ---
 const player = new R6Rig(engine, 0, 0, BASE_Z + 25);
-player.ry = 0; // Facing North (-Z) right into the Tycoon Base!
+player.ry = 0;
 
 // --- 4. DIRECT-FLOW CASH COLLECTORS ---
 let cash = 0;
@@ -282,9 +282,9 @@ function damagePlayer(dmg) {
     powerBtn.style.display = 'none';
     player.x = 0;
     player.y = 0;
-player.z = BASE_Z + 25;
-showToast('Knocked Out! Touch pedestals in base to re-equip powers.');
-}
+    player.z = BASE_Z + 25;
+    showToast('Knocked Out! Touch pedestals in base to re-equip powers.');
+  }
 document.getElementById('hp-bar').style.width = playerHP + '%';
 }
 // --- 8. UNIVERSAL CONTROLS (PC & MOBILE) ---
@@ -348,14 +348,16 @@ camDist = Math.max(7, Math.min(34, camDist + e.deltaY * 0.01));
 let joyTouchId = null;
 joyZone.addEventListener('touchstart', e => {
 e.preventDefault();
-const t = e.changedTouches;
+const t = e.changedTouches.item(0);
+if (!t) return;
 joyTouchId = t.identifier;
 handleJoy(t);
 }, { passive: false });
 joyZone.addEventListener('touchmove', e => {
 e.preventDefault();
 for (let i = 0; i < e.changedTouches.length; i++) {
-if (e.changedTouches[i].identifier === joyTouchId) handleJoy(e.changedTouches[i]);
+const t = e.changedTouches.item(i);
+if (t && t.identifier === joyTouchId) handleJoy(t);
 }
 }, { passive: false });
 function resetJoy() {
@@ -384,8 +386,8 @@ jumpBtn.addEventListener('click', doJump);
 let lookTouchId = null, lastTouchX = 0, lastTouchY = 0;
 canvas.addEventListener('touchstart', e => {
 for (let i = 0; i < e.changedTouches.length; i++) {
-const t = e.changedTouches[i];
-if (lookTouchId === null && t.identifier !== joyTouchId) {
+const t = e.changedTouches.item(i);
+if (t && lookTouchId === null && t.identifier !== joyTouchId) {
 lookTouchId = t.identifier;
 lastTouchX = t.clientX;
 lastTouchY = t.clientY;
@@ -394,8 +396,8 @@ lastTouchY = t.clientY;
 }, { passive: true });
 canvas.addEventListener('touchmove', e => {
 for (let i = 0; i < e.changedTouches.length; i++) {
-const t = e.changedTouches[i];
-if (t.identifier === lookTouchId) {
+const t = e.changedTouches.item(i);
+if (t && t.identifier === lookTouchId) {
 camYaw -= (t.clientX - lastTouchX) * 0.008;
 camPitch = Math.max(-0.15, Math.min(1.25, camPitch + (t.clientY - lastTouchY) * 0.008));
 lastTouchX = t.clientX;
@@ -405,7 +407,8 @@ lastTouchY = t.clientY;
 }, { passive: true });
 canvas.addEventListener('touchend', e => {
 for (let i = 0; i < e.changedTouches.length; i++) {
-if (e.changedTouches[i].identifier === lookTouchId) lookTouchId = null;
+const t = e.changedTouches.item(i);
+if (t && t.identifier === lookTouchId) lookTouchId = null;
 }
 });
 // --- 9. MAIN GAME LOOP ---
@@ -533,7 +536,6 @@ en.rig.swing *= 0.8;
 en.rig.sync();
 if (en.cooldown > 0) en.cooldown--;
 }
-// Camera position looking at player
 const targetY = player.y + 3.2;
 const horizDist = camDist * Math.cos(camPitch);
 engine.cam.x = player.x + Math.sin(camYaw) * horizDist;
